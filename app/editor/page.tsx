@@ -266,6 +266,47 @@ export default function EditorPage() {
     return languageMap[ext || ''] || 'plaintext';
   };
 
+  const getBoilerplateCode = (filename: string, language: string): string => {
+    const ext = filename.split('.').pop()?.toLowerCase();
+    const className = filename.split('.')[0];
+    
+    const boilerplates: { [key: string]: string } = {
+      'java': `public class ${className} {\n    public static void main(String[] args) {\n        // Write your code here\n        \n    }\n}`,
+      
+      'py': `#!/usr/bin/env python3\n# ${filename}\n\ndef main():\n    # Write your code here\n    pass\n\nif __name__ == "__main__":\n    main()`,
+      
+      'cpp': `#include <iostream>\nusing namespace std;\n\nint main() {\n    // Write your code here\n    \n    return 0;\n}`,
+      
+      'c': `#include <stdio.h>\n\nint main() {\n    // Write your code here\n    \n    return 0;\n}`,
+      
+      'js': `// ${filename}\n\nfunction main() {\n    // Write your code here\n    \n}\n\nmain();`,
+      
+      'ts': `// ${filename}\n\nfunction main(): void {\n    // Write your code here\n    \n}\n\nmain();`,
+      
+      'go': `package main\n\nimport "fmt"\n\nfunc main() {\n    // Write your code here\n    \n}`,
+      
+      'rs': `fn main() {\n    // Write your code here\n    \n}`,
+      
+      'php': `<?php\n// ${filename}\n\nfunction main() {\n    // Write your code here\n    \n}\n\nmain();\n?>`,
+      
+      'rb': `#!/usr/bin/env ruby\n# ${filename}\n\ndef main\n  # Write your code here\n  \nend\n\nmain`,
+      
+      'swift': `// ${filename}\n\nimport Foundation\n\nfunc main() {\n    // Write your code here\n    \n}\n\nmain()`,
+      
+      'kt': `// ${filename}\n\nfun main() {\n    // Write your code here\n    \n}`,
+      
+      'html': `<!DOCTYPE html>\n<html lang="en">\n<head>\n    <meta charset="UTF-8">\n    <meta name="viewport" content="width=device-width, initial-scale=1.0">\n    <title>${className}</title>\n</head>\n<body>\n    <!-- Write your code here -->\n    \n</body>\n</html>`,
+      
+      'css': `/* ${filename} */\n\n* {\n    margin: 0;\n    padding: 0;\n    box-sizing: border-box;\n}\n\nbody {\n    font-family: Arial, sans-serif;\n    line-height: 1.6;\n}\n\n/* Write your styles here */`,
+      
+      'json': `{\n  "name": "${className}",\n  "version": "1.0.0",\n  "description": ""\n}`,
+      
+      'md': `# ${className}\n\n## Description\n\nWrite your documentation here.\n\n## Usage\n\n\`\`\`\n// Code example\n\`\`\``,
+    };
+    
+    return boilerplates[ext || ''] || `// ${filename}\n\n// Write your code here\n`;
+  };
+
   const handleFileSelect = (index: number) => {
     // Save current file content before switching
     const updatedFiles = [...files];
@@ -282,10 +323,11 @@ export default function EditorPage() {
     if (!newFileName.trim()) return;
     
     const language = getLanguageFromExtension(newFileName);
+    const boilerplate = getBoilerplateCode(newFileName, language);
     const newFile: FileType = {
       name: newFileName,
       language: language,
-      content: `// ${newFileName}\n\n`
+      content: boilerplate
     };
     
     setFiles([...files, newFile]);
