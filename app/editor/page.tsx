@@ -4,6 +4,7 @@ import { useState, useEffect } from 'react';
 import dynamic from 'next/dynamic';
 import Link from 'next/link';
 import { useAuth } from '@clerk/nextjs';
+import jsPDF from 'jspdf';
 
 const MonacoEditor = dynamic(() => import('@monaco-editor/react'), { ssr: false });
 
@@ -70,6 +71,7 @@ export default function EditorPage() {
   const [showOutput, setShowOutput] = useState(false);
   const [suggestedCode, setSuggestedCode] = useState('');
   const [showDiff, setShowDiff] = useState(false);
+  const [originalCode, setOriginalCode] = useState(''); // Store code before AI conversation
 
   // Resizable panel widths
   const [sidebarWidth, setSidebarWidth] = useState(250);
@@ -184,6 +186,11 @@ export default function EditorPage() {
 
   const handleSendMessage = async () => {
     if (!inputMessage.trim() || isLoading) return;
+    
+    // Capture original code on first user message (after initial AI greeting)
+    if (chatMessages.length === 1 && !originalCode) {
+      setOriginalCode(code);
+    }
     
     const userMessage = inputMessage;
     setInputMessage('');
@@ -305,6 +312,124 @@ export default function EditorPage() {
     };
     
     return boilerplates[ext || ''] || `// ${filename}\n\n// Write your code here\n`;
+  };
+
+  const handleExportToPDF = () => {
+    const doc = new jsPDF();
+    const pageWidth = doc.internal.pageSize.getWidth();
+    const pageHeight = doc.internal.pageSize.getHeight();
+    const margin = 15;
+    const maxWidth = pageWidth - 2 * margin;
+    let yPosition = margin;
+
+    // Helper function to add text with automatic page breaks
+    const addText = (text: string, fontSize: number, isBold: boolean = false) => {
+      doc.setFontSize(fontSize);
+      if (isBold) {
+        doc.setFont('helvetica', 'bold');
+      } else {
+        doc.setFont('helvetica', 'normal');
+      }
+
+      const lines = doc.splitTextToSize(text, maxWidth);
+      
+      lines.forEach((line: string) => {
+        if (yPosition + 10 > pageHeight - margin) {
+          doc.addPage();
+          yPosition = margin;
+        }
+        doc.text(line, margin, yPosition);
+        yPosition += fontSize * 0.5;
+      });
+      
+      yPosition += 5; // Add spacing after text block
+    };
+
+    // Helper function to add a section separator
+    const addSeparator = (color: number[] = [255, 107, 53]) => {
+      if (yPosition + 10 > pageHeight - margin) {
+        doc.addPage();
+        yPosition = margin;
+      }
+      doc.setDrawColor(color[0], color[1], color[2]);
+      doc.setLineWidth(0.5);
+      doc.line(margin, yPosition, pageWidth - margin, yPosition);
+      yPosition += 10;
+    };
+
+    // Add title and header
+    addText('Debugify - Code Debugging Session', 18, true);
+    addText(`Date: ${new Date().toLocaleString()}`, 10);
+    addText(`File: ${files[selectedFileIndex]?.name || 'untitled'}`, 10);
+    yPosition += 5;
+    addSeparator();
+
+    // SECTION 1: Original/Incorrect Code
+    addText('1. ORIGINAL CODE (Before AI Help)', 14, true);
+    yPosition += 3;
+    if (originalCode) {
+      addText(originalCode, 8);
+    } else {
+      addText('(No original code captured - conversation started without code changes)', 9);
+    }
+    yPosition += 5;
+    addSeparator([200, 200, 200]);
+
+    // SECTION 2: AI Conversation (excluding the initial greeting)
+    addText('2. AI CONVERSATION & DEBUGGING PROCESS', 14, true);
+    yPosition += 3;
+    
+    // Skip the first message (AI greeting) and show actual conversation
+    const actualConversation = chatMessages.slice(1);
+    
+    if (actualConversation.length === 0) {
+      addText('(No conversation yet)', 9);
+    } else {
+      actualConversation.forEach((message, index) => {
+        if (yPosition + 30 > pageHeight - margin) {
+          doc.addPage();
+          yPosition = margin;
+        }
+
+        if (message.role === 'user') {
+          addText(`Question: ${message.content}`, 11, true);
+        } else if (message.role === 'assistant') {
+          addText('AI Response:', 11, true);
+          addText(message.content, 9);
+          
+          // Add a thin separator after each Q&A pair
+          if (yPosition + 5 < pageHeight - margin) {
+            doc.setDrawColor(220, 220, 220);
+            doc.setLineWidth(0.2);
+            doc.line(margin + 10, yPosition, pageWidth - margin - 10, yPosition);
+            yPosition += 8;
+          }
+        }
+      });
+    }
+    
+    yPosition += 5;
+    addSeparator([200, 200, 200]);
+
+    // SECTION 3: Corrected Code
+    addText('3. CORRECTED CODE (After AI Help)', 14, true);
+    yPosition += 3;
+    addText(code || '// No code', 8);
+
+    // Save the PDF
+    const fileName = `debugify_${files[selectedFileIndex]?.name || 'session'}_${Date.now()}.pdf`;
+    doc.save(fileName);
+  };
+
+  const handleClearConversation = () => {
+    if (confirm('Are you sure you want to clear the conversation? This will reset the chat history.')) {
+      setChatMessages([
+        { role: 'assistant', content: 'Hi! I\'m your AI coding assistant powered by Google Gemini. How can I help you debug or improve your code today?' }
+      ]);
+      setOriginalCode(''); // Reset original code for next session
+      setShowDiff(false);
+      setSuggestedCode('');
+    }
   };
 
   const handleFileSelect = (index: number) => {
@@ -1125,6 +1250,28 @@ export default function EditorPage() {
                 <option value="light">☀️ Light</option>
                 <option value="hc-black">🎯 High Contrast</option>
               </select>
+
+              {/* Clear Chat Button */}
+              <button
+                onClick={handleClearConversation}
+                disabled={chatMessages.length <= 1}
+                className="flex items-center gap-1.5 px-3 py-1 rounded-lg text-xs font-medium transition-all bg-[#0a0a0a]/50 border border-red-500/30 text-red-400 hover:bg-red-500/10 hover:border-red-500/50 disabled:opacity-50 disabled:cursor-not-allowed"
+                title={chatMessages.length <= 1 ? "No conversation to clear" : "Clear conversation history"}
+              >
+                <span>🗑️</span>
+                <span>Clear Chat</span>
+              </button>
+
+              {/* Export to PDF Button */}
+              <button
+                onClick={handleExportToPDF}
+                disabled={chatMessages.length <= 1}
+                className="flex items-center gap-1.5 px-3 py-1 rounded-lg text-xs font-medium transition-all bg-gradient-to-r from-[#ff6b35] to-[#ff8c42] hover:from-[#ff8c42] hover:to-[#ffa366] text-white shadow-md shadow-[#ff6b35]/30 hover:shadow-lg hover:shadow-[#ff6b35]/40 disabled:opacity-50 disabled:cursor-not-allowed disabled:shadow-none"
+                title={chatMessages.length <= 1 ? "Start a conversation to export" : "Export conversation and code to PDF"}
+              >
+                <span>📄</span>
+                <span>Export PDF</span>
+              </button>
             </div>
           </div>
 
@@ -1411,7 +1558,7 @@ export default function EditorPage() {
                 {isLoading ? 'Sending...' : 'Send'}
               </button>
             </div>
-            <div className="mt-2 flex gap-2">
+            <div className="mt-2 flex gap-2 flex-wrap">
               <button 
                 onClick={() => setInputMessage('Find any bugs in this code')}
                 disabled={isLoading}

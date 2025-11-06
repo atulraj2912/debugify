@@ -12,6 +12,7 @@
     "@clerk/nextjs": "^6.34.1",
     "@google/generative-ai": "^0.24.1",
     "@monaco-editor/react": "^4.7.0",
+    "jspdf": "^3.0.3",
     "next": "15.5.5",
     "react": "19.1.0",
     "react-dom": "19.1.0"
