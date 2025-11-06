@@ -41,9 +41,6 @@ export default function Home() {
                 Start Debugging Now →
               </button>
             </Link>
-            <button className="border-2 border-[#ff6b35] hover:bg-[#ff6b35]/10 px-8 py-4 rounded-lg font-bold text-lg transition-all">
-              Watch Demo
-            </button>
           </div>
         </div>
       </section>
