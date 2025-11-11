@@ -52,8 +52,8 @@ Student question: ${message}
 Remember: Your role is to be a patient teacher. Help them learn to debug and think like a programmer, not just fix their immediate problem. End with a single code block containing the fixed code.`;
 
     // Call generateContent with a small retry/backoff strategy for transient 429 rate-limit errors
-    let result: any = undefined;
-    let lastError: any = undefined;
+    let result: Awaited<ReturnType<typeof model.generateContent>> | undefined = undefined;
+    let lastError: Error | unknown = undefined;
     const maxAttempts = 3;
     for (let attempt = 1; attempt <= maxAttempts; attempt++) {
       try {
@@ -61,7 +61,7 @@ Remember: Your role is to be a patient teacher. Help them learn to debug and thi
         break;
       } catch (err) {
         lastError = err;
-        const msg = (err as any)?.message || String(err);
+        const msg = err instanceof Error ? err.message : String(err);
         // If rate limited, try to parse suggested retry time and wait, otherwise back off exponentially
         if (/429|Too Many Requests/i.test(msg) && attempt < maxAttempts) {
           const retryMatch = msg.match(/Please retry in (\d+(?:\.\d+)?)s/);
@@ -78,12 +78,16 @@ Remember: Your role is to be a patient teacher. Help them learn to debug and thi
     if (!result && lastError) {
       throw lastError;
     }
+    if (!result) {
+      throw new Error('Failed to generate content after retries');
+    }
     const response = await result.response;
     const text = response.text();
 
     return NextResponse.json({ response: text });
   } catch (error) {
-  console.error('Error calling Gemini API:', (error as any)?.stack || error);
+    const errorObj = error instanceof Error ? error : new Error(String(error));
+    console.error('Error calling Gemini API:', errorObj.stack || errorObj);
     // Return a slightly more detailed error for debugging (non-sensitive)
     const message = error instanceof Error ? error.message : String(error);
     return NextResponse.json(

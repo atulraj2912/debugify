@@ -273,7 +273,7 @@ export default function EditorPage() {
     return languageMap[ext || ''] || 'plaintext';
   };
 
-  const getBoilerplateCode = (filename: string, language: string): string => {
+  const getBoilerplateCode = (filename: string): string => {
     const ext = filename.split('.').pop()?.toLowerCase();
     const className = filename.split('.')[0];
     
@@ -385,7 +385,7 @@ export default function EditorPage() {
     if (actualConversation.length === 0) {
       addText('(No conversation yet)', 9);
     } else {
-      actualConversation.forEach((message, index) => {
+      actualConversation.forEach((message) => {
         if (yPosition + 30 > pageHeight - margin) {
           doc.addPage();
           yPosition = margin;
@@ -448,7 +448,7 @@ export default function EditorPage() {
     if (!newFileName.trim()) return;
     
     const language = getLanguageFromExtension(newFileName);
-    const boilerplate = getBoilerplateCode(newFileName, language);
+    const boilerplate = getBoilerplateCode(newFileName);
     const newFile: FileType = {
       name: newFileName,
       language: language,
