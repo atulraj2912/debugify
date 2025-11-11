@@ -1,7 +1,11 @@
 import { GoogleGenerativeAI } from '@google/generative-ai';
 import { NextResponse } from 'next/server';
 
-const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY || '');
+const API_KEY = process.env.GEMINI_API_KEY || process.env.GOOGLE_API_KEY || '';
+if (!API_KEY) {
+  console.error('GEMINI API key is not set. Please set GEMINI_API_KEY or GOOGLE_API_KEY in your environment.');
+}
+const genAI = new GoogleGenerativeAI(API_KEY);
 
 export async function POST(request: Request) {
   try {
@@ -14,7 +18,8 @@ export async function POST(request: Request) {
       );
     }
 
-    const model = genAI.getGenerativeModel({ model: 'gemini-2.0-flash-exp' });
+    // Use gemini-2.0-flash (stable 2.0 model)
+    const model = genAI.getGenerativeModel({ model: 'gemini-2.0-flash' });
 
     // Create a context-aware educational prompt
     const prompt = `You are an educational programming mentor and debugging assistant. Your goal is to TEACH students, not just give them solutions.
@@ -46,15 +51,43 @@ Student question: ${message}
 
 Remember: Your role is to be a patient teacher. Help them learn to debug and think like a programmer, not just fix their immediate problem. End with a single code block containing the fixed code.`;
 
-    const result = await model.generateContent(prompt);
+    // Call generateContent with a small retry/backoff strategy for transient 429 rate-limit errors
+    let result: any = undefined;
+    let lastError: any = undefined;
+    const maxAttempts = 3;
+    for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+      try {
+        result = await model.generateContent(prompt);
+        break;
+      } catch (err) {
+        lastError = err;
+        const msg = (err as any)?.message || String(err);
+        // If rate limited, try to parse suggested retry time and wait, otherwise back off exponentially
+        if (/429|Too Many Requests/i.test(msg) && attempt < maxAttempts) {
+          const retryMatch = msg.match(/Please retry in (\d+(?:\.\d+)?)s/);
+          const retrySeconds = retryMatch ? parseFloat(retryMatch[1]) : Math.min(5 * attempt, 30);
+          const waitMs = Math.ceil(retrySeconds * 1000);
+          console.warn(`Rate limit detected, attempt ${attempt} - retrying after ${waitMs}ms`);
+          await new Promise((res) => setTimeout(res, waitMs));
+          continue;
+        }
+        // For non-retryable or final attempt, rethrow to be handled by outer catch
+        throw err;
+      }
+    }
+    if (!result && lastError) {
+      throw lastError;
+    }
     const response = await result.response;
     const text = response.text();
 
     return NextResponse.json({ response: text });
   } catch (error) {
-    console.error('Error calling Gemini API:', error);
+  console.error('Error calling Gemini API:', (error as any)?.stack || error);
+    // Return a slightly more detailed error for debugging (non-sensitive)
+    const message = error instanceof Error ? error.message : String(error);
     return NextResponse.json(
-      { error: 'Failed to get AI response' },
+      { error: 'Failed to get AI response', details: message },
       { status: 500 }
     );
   }
